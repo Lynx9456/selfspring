@@ -9,3 +9,5 @@
 1.3 ApplicationContext：容器（上下文）。他要主导 BeanDefinition的生产，把BeanDefinition
                         "传递"（注册，beanDefinition注册，beanDefinitionRegister（方法：registerBeanDefinition））给BeanFactory生成bean。
                         getBean方法不是ApplicationContext里面的方法吗？是的，这个getBean方法查看源码，实际最终调用的是BeanFactory的getBean方法。
+
+2. 开始自己仿源码
