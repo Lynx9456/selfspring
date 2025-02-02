@@ -10,9 +10,9 @@ import my.self.spring.annotation.Service;
 import my.self.spring.beanDefinition.AnnotateGenericBeanDefinition;
 import my.self.spring.beanDefinition.AnnotationBeanDefinition;
 import my.self.spring.beanDefinition.BeanDefinitionRegistry;
-import my.self.spring.beanFactory.BeanFactory;
 
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +28,8 @@ public class DefaultListableBeanFactory implements BeanDefinitionRegistry, BeanF
     private final Map<String, AnnotationBeanDefinition> beanDefinitionMap = new ConcurrentHashMap<>(256);
 
     private List<String> beanDefinitionNames = new ArrayList<>();
+
+    private final Map<String, Object> singletonObjects = new ConcurrentHashMap<>(256);
 
     @Override
     public void registerBeanDefinition(String beanName, AnnotationBeanDefinition beanDefinition) {
@@ -76,6 +78,61 @@ public class DefaultListableBeanFactory implements BeanDefinitionRegistry, BeanF
     // 只有我们的bean都注册上以后，才能有 getBean
     @Override
     public Object getBean(String beanName) {
+        return doGetBean(beanName);
+    }
+
+    private Object doGetBean(String beanName) {
+        Object bean = singletonObjects.get(beanName);
+        if (bean != null) {
+            return bean;
+        }
+        //当bean不存在时，需要根据beanDefinition来创建bean
+        AnnotateGenericBeanDefinition bd = (AnnotateGenericBeanDefinition) beanDefinitionMap.get(beanName);
+        Object createBean = createBean(beanName, bd);
+        //当scope=singleton时，创建对象并放入单例池，通过享元模式进行读取
+        //当scope=prototype时，每次调用都会创建新对象
+        if (bd.getScope().equals("singleton")) {
+            //createBean方法其实是完成了beanDefinition转变成真正的 实体对象的地方
+            singletonObjects.put(beanName, createBean);
+        }
+        return createBean;
+    }
+
+    private Object createBean(String beanName, AnnotateGenericBeanDefinition bd) {
+        try {
+            return bd.getClazz().getConstructor().newInstance();
+        } catch (InstantiationException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        }
         return null;
+    }
+
+    public void preInstanceInitiateSingleton() {
+        //初始化我们定义的bean，我们就需要找到所有的 我们自定义的beanName
+
+        //为什么不直接使用我们的beanDefinitionNames呢？new了一下，是不是多此一举？
+        //因为beanDefinitionNames处于一个并发环境下，因为我们上面还有beanDefinitionNames.add的方法逻辑
+        //我们的有关beanDefinitionNames.add元素的方法，就会导致for循环失败(modCount，当add元素后modCount++)
+        //所以我们此处的代码，就是备份了一个新的List<String> beanNames对象，防止beanDefinitionNames在并发环境下的add操作
+        List<String> beanNames = new ArrayList<>(beanDefinitionNames);
+        for (String beanName : beanNames) {
+            //beanNames里的东西，都是扫描出来的
+            //如果扫描之后，有新的 通过动态创建的 标有单例bean的Class加载到JVM，这部分就会被遗漏
+            AnnotateGenericBeanDefinition bd = (AnnotateGenericBeanDefinition) beanDefinitionMap.get(beanName);
+            if (bd.getScope().equals("singleton")) {
+                //创建单例对象，然后把这个单例对象保存到我们的 单例池(内存缓存)里面
+                //getBean方法里面就包含了 创建对象，然后放到singletonObjects里
+
+                //为了确保我们在getBean调用的时候，能够不遗漏应该初始化的单例bean，所以我们把这部分逻辑放到getBean里
+                getBean(beanName);
+            }
+        }
+
     }
 }

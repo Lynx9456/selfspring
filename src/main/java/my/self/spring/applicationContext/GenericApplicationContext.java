@@ -41,10 +41,14 @@ public class GenericApplicationContext implements BeanDefinitionRegistry {
     }
 
     private void finishBeanFactoryInitialization(DefaultListableBeanFactory beanFactory) {
-        //todo
+        this.factory.preInstanceInitiateSingleton();
     }
 
     private DefaultListableBeanFactory obtainBeanFactory() {
         return this.factory;
+    }
+
+    public Object getBean(String beanName) {
+        return this.factory.getBean(beanName);
     }
 }
