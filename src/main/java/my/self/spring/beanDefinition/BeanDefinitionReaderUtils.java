@@ -10,7 +10,7 @@ package my.self.spring.beanDefinition;
  */
 public class BeanDefinitionReaderUtils {
     public static void registerBeanDefinition(AnnotationBeanDefinition beanDefinition, BeanDefinitionRegistry registry) {
-        String beanName=((AnnotateGenericBeanDefinition)beanDefinition).getClazz().getSimpleName();
-        registry.registerBeanDefinition(beanName,beanDefinition);
+        String beanName = ((AnnotateGenericBeanDefinition) beanDefinition).getClazz().getSimpleName();
+        registry.registerBeanDefinition(beanName, beanDefinition);
     }
 }

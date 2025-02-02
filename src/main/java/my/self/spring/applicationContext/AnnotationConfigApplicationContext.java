@@ -5,18 +5,19 @@
 package my.self.spring.applicationContext;
 
 import my.self.spring.beanDefinition.AnnotateBeanDefinitionReader;
+import my.self.spring.beanDefinition.BeanDefinitionRegistry;
 
 /**
  * @author 秋涩
  * @version AnnotationConfigApplicationContext.java, v 0.1 2025年02月01日 23:00 秋涩
  */
-public class AnnotationConfigApplicationContext {
+public class AnnotationConfigApplicationContext extends GenericApplicationContext implements BeanDefinitionRegistry {
 
     private AnnotateBeanDefinitionReader reader;
 
-    // 如果有人调用这个无参构造方法，必须先调用父类的无参构造方法
+    // 如果有人调用这个无参构造方法，必须先调用父类的无参构造方法，父类初始化 defaultListableBeanFactory
     public AnnotationConfigApplicationContext() {
-        this.reader = new AnnotateBeanDefinitionReader();
+        this.reader = new AnnotateBeanDefinitionReader(this);
     }
 
     public AnnotationConfigApplicationContext(Class<?> componentClass) {

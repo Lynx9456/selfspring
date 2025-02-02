@@ -14,6 +14,10 @@ public class AnnotateBeanDefinitionReader {
 
     private BeanDefinitionRegistry registry;
 
+    public AnnotateBeanDefinitionReader(BeanDefinitionRegistry registry) {
+        this.registry = registry;
+    }
+
     // 注册我们的 路径扫描 这个bean到BeanFactory中
     public void register(Class<?> componentClass) {
         registerBean(componentClass);
@@ -35,6 +39,6 @@ public class AnnotateBeanDefinitionReader {
         }
 
         // beanDefinition 创建完成后，是不是得给BeanFactory 进行 bean 注册了呀？
-        BeanDefinitionReaderUtils.registerBeanDefinition(beanDefinition,this.registry);
+        BeanDefinitionReaderUtils.registerBeanDefinition(beanDefinition, this.registry);
     }
 }
