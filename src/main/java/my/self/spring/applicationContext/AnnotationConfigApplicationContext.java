@@ -29,6 +29,10 @@ public class AnnotationConfigApplicationContext extends GenericApplicationContex
         register(componentClass);
 
         //3. 扫描这个路径，然后提取出这个路径下所有的bean，然后注册到bean工厂（单例bean的初始化）
+        // refresh方法作为核心方法，需要放到父类中，让所有的子类都能使用。【refresh是核心方法】
+        // refresh方法为了让子类共同使用，定义到了父类中
+
+        refresh();
 
     }
 

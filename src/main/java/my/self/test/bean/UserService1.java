@@ -9,10 +9,10 @@ import my.self.spring.annotation.Service;
 
 /**
  * @author 秋涩
- * @version UserService.java, v 0.1 2025年02月01日 21:24 秋涩
+ * @version UserService1.java, v 0.1 2025年02月01日 21:24 秋涩
  */
 
-@Service("userService")
-@Scope("prototype")
-public class UserService {
+@Service("userService1")
+@Scope("singleton")
+public class UserService1 {
 }
