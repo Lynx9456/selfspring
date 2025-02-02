@@ -8,7 +8,7 @@ package my.self.spring.beanDefinition;
  * @author 秋涩
  * @version AnnotateGenericBeanDefinition.java, v 0.1 2025年02月01日 23:17 秋涩
  */
-public class AnnotateGenericBeanDefinition {
+public class AnnotateGenericBeanDefinition implements AnnotationBeanDefinition{
 
     private Class clazz;
     private String scope;
