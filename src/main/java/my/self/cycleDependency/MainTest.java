@@ -17,7 +17,33 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 一级缓存存放的是完整的实例对象（属性+JDK代理），二级缓存存放的是半成品（属性未完成，JDK代理已完成），三级缓存存放的更半成品（JDK代理未完成）
+ * 三级缓存：
+ *  1.一级缓存singletonObjects存放的是完整的实例对象（属性+JDK代理），其中所有的需要实例化的属性也经过了实例化，最终的完整对象。
+ *  2.二级缓存earlySingletonObjects存放的是半成品（属性未完成，JDK代理已完成），因为我们必须把一些不完整的对象和完整的对象进行分开存储
+ *  3.三级缓存singletonFactories存放的更半成品（JDK代理未完成），存放的是能够进行延迟加载的一个函数接口（getObject方法）。
+ *      一旦我们存在循环依赖的时候，我们可以通过延迟加载的形式，进行真正的对象创建（通过getObject方法创建），
+ *      然后将创建好的对象加入到二级缓存earlySingletonObjects中。
+ *
+ * Spring解决循环依赖的方式：
+ *  1.构造器（构造函数依赖注入） 不能解决的
+ *  2.多例的（prototype 原型的） 不能解决的（因为多例的bean无法进行缓存，也就谈不上三级缓存，也就谈不上解决了）
+ *  3.setter注入，能够解决。解决方式 - 三级缓存。如果存在这种依赖关系的对象，他会提前暴露一个 factory工厂的入口（a和b相互依赖，初始化a发现没有b，
+ *      初始化b发现没有a。提前将我们的a和b通过factoryBean的形式进行暴露，此时的暴露并没有真正的进行对象的创建，延迟创建，
+ *      必须等到调用getObject方法的时候，才会真正的进行对象的创建）
+ *      对于提前暴露来说，他能够使我们互相有依赖的对象找到一个引用，a发现没有b的实例，但是有b暴露的factory接口，那么对于a来说，就相当于找到了b，即便此时b并没有真正的初始化。
+ *      但是通过getObject方法的调用，最终完成b的实例化，最终将a的依赖属性补充完整。
+ *
+ * 对于Spring中bean的类型：
+ *  1.普通的bean，通过@Component，@Service啊这种注解进行bean的注册；
+ *  2.facotrybean。他需要通过我们的 getObject方法的回调，进行我们对象的创建，而且如果我们想要获取factorybean的话，我们在使用 getBean方法的时候，需要在 beanname前边加上一个 &。 getBean（“&beanname”）
+ *
+ * GetBean方法，说完了：
+ *  1.如果缓存中存在，直接返回（普通bean直接返回，factorybean需要触发getObject）；
+ *  2.检查 是否为 正在创建的多例
+ *  3.parentBeanFactory 看看是否有bean的存在
+ *  4.看看 当前创建的bean 是否有 @dependon，如果有，检查dependson依赖直接抛出异常，初始化 dep，迭代调用 getBean
+ *  5.单例创建、多例创建、其他创建 （missing createBean）真正的 bean的初始化，其实就是发生在 createBean里
+ *  6.类型检查和转化
  *
  * @author 秋涩
  * @version MainTest.java, v 0.1 2025年02月15日 15:09 秋涩
@@ -84,7 +110,6 @@ public class MainTest {
 
         //调用了无参构造方法
         Object instance = clazz.newInstance();
-        //earlySingletonObjects.put(beanName, instance);
 
         //如果有循环依赖并且有AOP代理，必须将classA 的方法增强挪到这里
         //第四步：方法增强（AOP），三级缓存.put() 直接添加（延迟添加）
@@ -119,33 +144,18 @@ public class MainTest {
     }
 
     private static Object getSingleton(String beanName) {
-        //Object singleton = singletonObjects.get(beanName);
-        ////一级缓存中没有 && 该instance在创建中
-        //if (singleton == null && singletonCurrentlyInCreation.contains(beanName)) {
-        //    singleton = earlySingletonObjects.get(beanName);
-        //    if (singleton == null) {
-        //        ObjectFactory factory = singletonFactories.get(beanName);
-        //        if (factory != null) {
-        //            singleton = factory.getObject();    // 触发代理生成
-        //            //之所以有这句话，就是之前咱们说了半天的，AOP生成的代理对象，需要替换二级缓存中初始生成的那个对象
-        //            earlySingletonObjects.put(beanName, singleton);
-        //            singletonFactories.remove(beanName);
-        //        }
-        //    }
-        //}
-
         Object singleton = singletonObjects.get(beanName);
         //一级缓存中没有 && 该instance在创建中
         if (singleton == null && singletonCurrentlyInCreation.contains(beanName)) {
-            // 先检查三级缓存
-            ObjectFactory factory = singletonFactories.get(beanName);
-            if (factory != null) {
-                singleton = factory.getObject();
-                earlySingletonObjects.put(beanName, singleton); // 升级到二级缓存
-                singletonFactories.remove(beanName);
-            } else {
-                // 最后回退到二级缓存
-                singleton = earlySingletonObjects.get(beanName);
+            singleton = earlySingletonObjects.get(beanName);
+            if (singleton == null) {
+                ObjectFactory factory = singletonFactories.get(beanName);
+                if (factory != null) {
+                    singleton = factory.getObject();    // 触发代理生成
+                    //之所以有这句话，就是之前咱们说了半天的，AOP生成的代理对象，需要替换二级缓存中初始生成的那个对象
+                    earlySingletonObjects.put(beanName, singleton);
+                    singletonFactories.remove(beanName);
+                }
             }
         }
         return singleton;
