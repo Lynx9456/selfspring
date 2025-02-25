@@ -1,3 +1,5 @@
+一、手写Spring
+
 1. 想要书写简易Spring源码，首先要搞明白 BeanFactory，BeanDefinition，ApplicationContext之间的关系
 
 1.1 BeanFactory：工厂，声场bean，提供获取bean的方法 getBean方法。
@@ -17,3 +19,247 @@
     BeanDefinition      BeanDefinition
 
 ApplicationContext              BeanFactory
+
+二、手写循环依赖
+
+this() 和 register后进行第一次源码的总结。
+    a.this()里边进行了两个对象的创建逻辑：reader创建，包含了环境创建（systemProperties 和 envProperties环境初始化），进行了一内部的一些spring的bean的读取和注册（为beanfactorty设置了 专门针对于 @order @priroty @lazy的processer，添加有关@configuration的，@autowired，@Resource，检测一下 JPA 如果有的话也会进行添加，Listener 和 listner facotry的）
+    b.this()里边的 scanner，这个scanner 主要为我们一个 string basepackages的这种构造提供的；
+    c.refresh方法。专门处理我们 @ComponentScan类的
+
+============= 之所以在这里进行总结，是因为我们马上进入 容器的核心代码逻辑 refresh，这里边的很多逻辑，都会使用前边为我们铺垫的一些元素在里边。比如说我们在reader中注册的 spring infrastructure级别的那五个bean，比如说我们的@ComponentScan类的注册============
+
+refresh() 方法：
+    a.refresh方法涵盖了我们spring容器里边几乎所有的核心内容，无论是我们的 beanfactoryPostProcessor还是beanPostProcessor，还是messageinit，eventCasterinit，listener register还有我们的 non lazy的单例bean的初始化，都是spring涉及到的核心内容。
+    b.refresh方法他的扩展性仅仅停留在 postProcessBeanFactory和onRefresh 方法上，我们可以通过这里用到的模板方法模式进行这两个方法的扩展。
+    c.refresh方法，调用过很多次 getBean方法，getBean方法也是refresh方法中的核心方法之一。
+    d.我们通过 this --》 refresh方法，我们能够看到，我们涉及到的所有的 bean 都进行了相应的注册和初始化，而且我们还为 beanfactory准备好了很多 processor。
+
+三级缓存：
+    a.singletonObjects 存放的是一个完整的对象（所有的需要实例化的 属性 也经过了实例化，最终的完整的对象）
+    b.earlySingletonObjects 存放的是不太完整的对象（why？因为我们必须把一些不完整的对象和完整的对象进行一个 分开存储）
+    c.singletonFactores 存放的是。。。。？能够进行延迟加载的一个 函数接口（getObject方法）。一旦我们存在循环依赖的时候，
+我们可以通过延迟加载的形式 进行我们的 真正的对象的创建（通过getObject方法创建），然后将创建好的对象加入到我们的earlySingletonObjects 缓存中。
+
+Spring解决循环依赖的方式：
+    a.构造器（构造函数依赖注入） 不能解决的
+    b.多例的（prototype 原型的） 不能解决的（因为多例的bean无法进行缓存，也就谈不上三级缓存，也就谈不上解决了）
+    c.setter注入。能够解决。解决方式-三级缓存。如果存在这种依赖关系的对象，他会提前暴露一个 factory工厂的入口（a和b相互依赖，初始化a发现没有b，初始化b发现没有a。提前将我们的a和b通过factorybean的形式进行一个暴露，此时的暴露并没有真正的进行对象的创建，延迟创建，必须等到调用getObject方法的时候，才会真正的进行对象的创建。）对于提前暴露来说，他能够使我们互相有依赖的对象找到一个引用，a 发现没有b的实例，但是有b暴露的 facotry接口，那么对于a来说，就相当于找到了b，即便此时b并没有真正的初始化。但是通过getObject方法的调用，最终完成b的实例化，最终将a的依赖属性补充完整。
+
+对于Spring中bean的类型：
+    a.普通的bean，通过@Component，@Service啊这种注解进行bean的注册；
+    b.facotrybean。他需要通过我们的 getObject方法的回调，进行我们对象的创建，而且如果我们想要获取factorybean的话，我们在使用 getBean方法的时候，需要在 beanname前边加上一个 &。 getBean（“&beanname”）
+
+GetBean方法，说完了：
+    a.如果缓存中存在，直接返回（普通bean直接返回，factorybean需要触发getObject）；
+    b.检查 是否为 正在创建的多例
+    c.parentBeanFactory 看看是否有bean的存在
+    d.看看 当前创建的bean 是否有 @dependon，如果有，检查dependson依赖直接抛出异常，初始化 dep，迭代调用 getBean
+    e.单例创建、多例创建、其他创建 （missing createBean）真正的 bean的初始化，其实就是发生在 createBean里
+    f.类型检查和转化
+
+CreateBean方法
+    a.通过我们beandefinition找到当前创建bean的 class
+    b.寻找 方法的重载
+    c. // Give BeanPostProcessors a chance to return a proxy instead of the target bean instance.
+
+    Object bean = resolveBeforeInstantiation(beanName, mbdToUse); 给 AOP 机会啊？也就成为了 aop的入口
+    aop源码的入口找到了，接下来我们就看看，使用了什么 方法进行了 我们的 aop的创建。（这部分源码比较复杂，但是我们可以通过
+    阅读这部分源码的核心代码对 aop 代理的创建进行一个学习）。 问？ aop 的功能，是在什么时候被执行的。 答：BeanPostProcessors中        进行的aop的实现
+
+doCreateBean的调用： 实例化 -- 暴露三级缓存ObjectFacotry -- 属性填充 -- bean的初始化（调用init method）
+AOP:  动态代理知识点。
+JDK的动态代理和 cglib动态代理有什么区别：
+JDK动态代理是不需要使用第三方库的，只需使用jdk自己就能够实现：
+   a.实现InvokeHandler接口，重写 invoke方法；通过反射进行的代理；
+   b.使用了 proxy.newProxyInstance 进行创建（生成代理对象）
+   c.JDK代理 只针对接口（interface）
+   d.JDK 动态代理采用的是 委托 机制
+
+Cglib动态代理，需要使用第三方库（CGLib库）
+    a.实现MethodInteceptor 接口，重写 intecept方法。通过字节码生成我们的代理对象
+    b.Cglib通过enhancer 的 create() 方法进行创建
+    c.Cglib代理针对的是 子类实现类
+    d.Cglib 采用继承机制
+
+使用jdk 动态代理还是 cglib动态代理呢？
+
+     a.如果是接口 aop 默认就是使用jdk动态代理；（可以强制使用 cglib，添加cglib库：aspectwaver，aecpetrjrt， cglib）
+     b.如果是 实现类（子类） 。必须使用cglib
+
+AOP 这部分重点的知识点我希望伙伴们掌握的是：
+
+    1、BeanPostProcess的执行时机，调用afterIntilization方法进行我们的代理创建；
+    2、AOP 中对 jdk动态和cglib动态的选择； （CreateProxy方法； optimize）
+    3、对 jdk动态和cglib动态的区别
+
+
+
+
+Spring中应用的常见的设计模式：
+
+    1、对于ApllicatinContext和我们的 BeanFacotry来说，我们如果想要使用 getBean方法，我们会通过 applicationcontext调用吧？为什么getBean方法能够通过applicationcontext调用，因为applicationcontext通过构造函数的形式把 BeanFacotry进行了属性的设置，这是桥接模式的典型应用；桥接模式他能够把实现和抽象分离，实现部分是属于 BeanFacotry的，真正的实现逻辑在 BeanFacotry中； 而抽象部分属于ApllicatinContext，抽象部分暴露给调用端。所以 getBean的暴露，是通过 applicationcontext 进行的。当然了，这里边还是使用了工厂设计模式，因为getBean方法的实现是在 BeanFacotry中实行的。getBeanFactory().getBean(name, requiredType); 这就是我们所说的，桥接模式与工厂模式的配合。
+    2、getBean 的单例模式的对象管理；单例工厂。我们想象中的单例模式是怎么做的？（饿汉式+懒汉式+双重检查锁）。spring是怎么做的呢？难道spring真的使用了单例模式吗？“没有使用，因为spring是针对的 bean 进行的缓存，每个singleton的scopebean 只进行一次创建，存放到了一个 Map里边。请问，我们所说的单例模式，有map这个缓存吗？所以spring谈不上使用了单例模式，他只是借助了单例模式的思想。 说白了spring无非就是提前创建了一些存储bean的缓存，无需多次创建。spring引申的这种bean管理的模式，更类似于 什么模式呢？ -- 享元模式
+    3、模板方法模式的使用。JDBC Template /RestTemplate 都是使用的 模板方法模式。JDBCtemplate中的 createConnectionProxy方法是一个模板方法。摆在眼前的 refresh方法。（BeanPostProcessors， onrefresh）。 1。我很厉害，我对Spring的核心容器初始化源码有过研究；2.BeanPostPorssser（before，after，BeanFacotryPostPorcessspr） 3. after中的 aop啊（createBean give beanpOSTPROCESSOR a chance）？4. onrefresh方法对springboot的贡献。
+    4、代理模式 AOP 这部分源码进行的说明（BeanPostProcessors）。
+    5、监听器（观察者）模式。refresh方法中有initApplicationEventMulticaster（发布工具），以及registerListener（监听者）方法
+    6、责任链模式。 Filter 和 intercepors。 （xml配置文件中进行filter的添加，interceptoer的添加，并且可以对自定义的进行顺序的把控啊）广告筛选投放链条里进行使用。
+    7、策略模式。Resouce 我们常用的是 classpath的resource的加载，如果我们有远程的或者本地服务器的文件类型，inputstream类型，其实也都是可以加载的，根据不同的加载类型，使用不同的家逻辑。
+
+====================================================================================================
+
+Bean 在 Spring 中的完整创建流程
+以下是 Bean 创建的核心步骤（以 AbstractApplicationContext.refresh() 为入口）：
+
+1. Bean 定义加载
+源码入口：refresh() → obtainFreshBeanFactory() → loadBeanDefinitions().
+
+作用：解析 XML/注解，将 Bean 定义注册到 BeanFactory 的 BeanDefinitionMap 中。
+
+2. BeanFactoryPostProcessor 执行
+源码入口：refresh() → invokeBeanFactoryPostProcessors(beanFactory).
+
+作用：调用所有 BeanFactoryPostProcessor，修改 Bean 定义。
+
+示例：修改 Bean 的作用域或属性值。
+
+java
+复制
+public class CustomBeanFactoryPostProcessor implements BeanFactoryPostProcessor {
+    @Override
+    public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+        BeanDefinition bd = beanFactory.getBeanDefinition("myBean");
+        bd.setScope(BeanDefinition.SCOPE_PROTOTYPE); // 修改作用域
+        bd.getPropertyValues().add("name", "Spring"); // 修改属性值
+    }
+}
+3. Bean 实例化
+源码入口：AbstractAutowireCapableBeanFactory.createBean() → doCreateBean().
+
+步骤：
+
+实例化：通过反射或工厂方法创建 Bean 的原始对象。
+
+属性填充：注入依赖（populateBean()）。
+
+4. BeanPostProcessor 前置处理
+源码入口：initializeBean() → applyBeanPostProcessorsBeforeInitialization().
+
+作用：调用 postProcessBeforeInitialization 方法。
+
+示例：日志记录或属性校验。
+
+java
+复制
+public class LoggingBeanPostProcessor implements BeanPostProcessor {
+    @Override
+    public Object postProcessBeforeInitialization(Object bean, String beanName) {
+        System.out.println("Before初始化: " + beanName);
+        return bean;
+    }
+}
+5. 初始化方法调用
+源码入口：initializeBean() → invokeInitMethods().
+
+步骤：
+
+调用 InitializingBean.afterPropertiesSet()。
+
+调用自定义的 init-method。
+
+6. BeanPostProcessor 后置处理
+源码入口：initializeBean() → applyBeanPostProcessorsAfterInitialization().
+
+作用：调用 postProcessAfterInitialization 方法。
+
+示例：生成 AOP 代理。
+
+java
+复制
+public class ProxyBeanPostProcessor implements BeanPostProcessor {
+    @Override
+    public Object postProcessAfterInitialization(Object bean, String beanName) {
+        if (bean instanceof MyService) {
+            return Proxy.newProxyInstance(...); // 生成代理
+        }
+        return bean;
+    }
+}
+7. Bean 就绪
+Bean 被放入单例池（singletonObjects），供其他 Bean 注入使用。
+
+8. Bean 销毁
+容器关闭时调用 DisposableBean.destroy() 或自定义的 destroy-method。
+
+完整流程图示
+plaintext
+复制
+Spring 容器启动
+  │
+  ├─ 加载 Bean 定义 (BeanDefinition)
+  │
+  ├─ 执行 BeanFactoryPostProcessor（修改 Bean 定义）
+  │
+  ├─ 实例化 Bean（反射调用构造函数）
+  │
+  ├─ 填充 Bean 属性（依赖注入）
+  │
+  ├─ 执行 BeanPostProcessor 的 postProcessBeforeInitialization()
+  │
+  ├─ 调用初始化方法（InitializingBean.afterPropertiesSet() 和 init-method）
+  │
+  ├─ 执行 BeanPostProcessor 的 postProcessAfterInitialization()
+  │
+  └─ Bean 可用 → 放入单例池
+实际例子与源码结合
+1. BeanFactoryPostProcessor 示例
+目标：动态修改 Bean 的作用域。
+
+java
+复制
+public class ScopeModifyingPostProcessor implements BeanFactoryPostProcessor {
+    @Override
+    public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+        BeanDefinition bd = beanFactory.getBeanDefinition("userService");
+        bd.setScope(BeanDefinition.SCOPE_PROTOTYPE); // 改为多例
+    }
+}
+源码分析：在 PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors() 中遍历并调用所有 BeanFactoryPostProcessor。
+
+2. BeanPostProcessor 示例
+目标：为所有 Service 类添加事务代理。
+
+java
+复制
+public class TransactionalBeanPostProcessor implements BeanPostProcessor {
+    @Override
+    public Object postProcessAfterInitialization(Object bean, String beanName) {
+        if (bean instanceof UserService) {
+            return Enhancer.create(bean.getClass(), (MethodInterceptor) (obj, method, args, proxy) -> {
+                // 开启事务
+                TransactionManager.begin();
+                Object result = proxy.invokeSuper(obj, args);
+                TransactionManager.commit();
+                return result;
+            });
+        }
+        return bean;
+    }
+}
+源码分析：在 AbstractAutowireCapableBeanFactory.initializeBean() 中调用 BeanPostProcessor。
+
+总结
+BeanFactoryPostProcessor：操作 Bean 的元数据（BeanDefinition），在容器启动时执行。
+
+BeanPostProcessor：操作 Bean 的实例，在 Bean 初始化前后执行。
+
+Bean 创建流程：
+加载定义 → 修改定义 → 实例化 → 属性注入 → 前置处理 → 初始化 → 后置处理 → 就绪。
+
+关键源码位置：
+
+AbstractApplicationContext.refresh()：容器启动入口。
+
+PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors()：执行 BeanFactoryPostProcessor。
+
+AbstractAutowireCapableBeanFactory.initializeBean()：执行 BeanPostProcessor。
